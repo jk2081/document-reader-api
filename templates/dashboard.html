@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Reader API - Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Document Reader API Dashboard</h1>
+            <nav>
+                <a href="/admin/dashboard">Dashboard</a>
+                <a href="/admin/keys">API Keys</a>
+                <a href="/admin/logout">Logout</a>
+            </nav>
+        </header>
+
+        <main>
+            {% if error %}
+            <div class="error">{{ error }}</div>
+            {% endif %}
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Service Status</h3>
+                    <p class="stat-value status-{{ stats.service_status }}">{{ stats.service_status }}</p>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>API Keys</h3>
+                    <p class="stat-value">{{ stats.api_keys_count }}</p>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>Max File Size</h3>
+                    <p class="stat-value">{{ stats.max_file_size_mb }} MB</p>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h2>Configuration</h2>
+                
+                <div class="config-card">
+                    <h3>Anthropic API Key</h3>
+                    <form method="post" action="/admin/settings/anthropic">
+                        <div class="form-group">
+                            <input type="text" name="anthropic_key" 
+                                   value="{{ config.anthropic_key[:10] }}..." 
+                                   placeholder="sk-ant-api03-...">
+                        </div>
+                        <button type="submit">Update</button>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

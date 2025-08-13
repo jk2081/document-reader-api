@@ -1,0 +1,19 @@
+# Local wheel installation
+../document-reader/dist/document_reader-0.3.0-py3-none-any.whl
+
+# FastAPI stack
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+jinja2==3.1.2
+
+# AI service
+anthropic==0.7.8
+
+# Document reader dependencies (included via wheel)
+# easyocr>=1.6.0
+# PyMuPDF>=1.23.0
+# pillow>=9.0.0
+# numpy>=1.21.0
+# opencv-python>=4.5.0
+# scikit-image>=0.19.0
