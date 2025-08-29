@@ -1,199 +1,146 @@
-"""Main FastAPI application for Document Reader API."""
-
 import os
+import tempfile
+import logging
 from typing import Dict, Any
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header, Form
+from fastapi import FastAPI, HTTPException, UploadFile, Depends, Header, Form
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-import config
-from document_processor import DocumentProcessor, FileHandler
-from admin import admin_router
+from document_processor import DocumentProcessor
+from config import Config
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
-app = FastAPI(
-    title="Document Reader API",
-    description="Simple API for PDF OCR and data extraction",
-    version="1.0.0"
-)
+app = FastAPI(title="Document Reader API", version="1.0.0")
 
-# Initialize processors
-doc_processor = DocumentProcessor()
-file_handler = FileHandler()
+# Validate configuration on startup
+Config.validate()
 
-# Create data directory if it doesn't exist
-os.makedirs(config.DATA_DIR, exist_ok=True)
-
-# Include admin router
-app.include_router(admin_router)
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Initialize document processor
+document_processor = DocumentProcessor(Config.ANTHROPIC_API_KEY)
 
 
-def verify_api_key(authorization: str = Header(None)) -> bool:
-    """Verify API key from Authorization header.
-    
-    Args:
-        authorization: Authorization header value
-        
-    Returns:
-        True if valid API key
-        
-    Raises:
-        HTTPException: If API key is invalid or missing
-    """
+def verify_api_key(authorization: str = Header(None)) -> None:
+    """Verify API key from Authorization header."""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="API key required")
-    
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
     token = authorization.replace("Bearer ", "")
-    if token != config.API_KEY:
+    if token != Config.API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    return True
 
 
 @app.get("/health")
-async def health() -> Dict[str, str]:
-    """Basic health check endpoint.
-    
-    Returns:
-        Simple status response
-    """
+async def health():
+    """Health check endpoint."""
     return {"status": "healthy", "service": "document-reader-api"}
 
 
-@app.post("/ocr", dependencies=[Depends(verify_api_key)])
-async def extract_text(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """Extract text from PDF with confidence scoring.
-    
-    Args:
-        file: Uploaded PDF file
-        
-    Returns:
-        JSON with extracted text and confidence score
-        
-    Raises:
-        HTTPException: If file processing fails
-    """
-    try:
-        # Validate file type
-        if not file.filename or not file_handler.validate_file_type(file.filename):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only PDF files are supported"
-            )
-        
-        # Check file size
-        content = await file.read()
-        if len(content) > config.MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413, 
-                detail="File too large"
-            )
-        
-        # Save to temporary file
-        temp_path = file_handler.save_uploaded_file(content)
-        
-        try:
-            # Process with OCR
-            result = doc_processor.extract_text_from_pdf(temp_path)
-            
-            return {
-                "success": True,
-                "text": result['text'],
-                "confidence_score": result['confidence'],
-                "text_length": result['text_length']
-            }
-            
-        finally:
-            # Always clean up
-            file_handler.cleanup_temp_file(temp_path)
-            
-    except HTTPException:
-        raise
-    except Exception as e:
+@app.post("/ocr")
+async def ocr_endpoint(
+    file: UploadFile,
+    _: None = Depends(verify_api_key)
+):
+    """Extract text from PDF using OCR."""
+    # Validate file type
+    if not file.filename.endswith('.pdf'):
         raise HTTPException(
-            status_code=500, 
-            detail=f"Processing failed: {str(e)}"
+            status_code=400,
+            detail="Only PDF files are supported"
+        )
+
+    # Validate file size
+    if file.size and file.size > Config.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size exceeds maximum limit of {Config.MAX_FILE_SIZE} bytes"
+        )
+
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        # Extract text
+        text = document_processor.extract_text_from_pdf(temp_file_path)
+
+        # Clean up temporary file
+        os.unlink(temp_file_path)
+
+        return {
+            "success": True,
+            "text": text,
+            "text_length": len(text)
+        }
+
+    except Exception as e:
+        logger.error(f"OCR processing failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Document processing failed"
         )
 
 
-@app.post("/extract", dependencies=[Depends(verify_api_key)])
-async def extract_structured_data(
-    file: UploadFile = File(...),
-    prompt: str = Form(...)
-) -> Dict[str, Any]:
-    """Extract structured data from PDF using AI with custom prompt.
-    
-    Args:
-        file: Uploaded PDF file
-        prompt: User-defined extraction instructions
-        
-    Returns:
-        JSON with structured data extraction
-        
-    Raises:
-        HTTPException: If processing fails
-    """
-    try:
-        # Validate file type
-        if not file.filename or not file_handler.validate_file_type(file.filename):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only PDF files are supported"
-            )
-        
-        # Check file size
-        content = await file.read()
-        if len(content) > config.MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413, 
-                detail="File too large"
-            )
-        
-        # Validate prompt
-        if not prompt.strip():
-            raise HTTPException(
-                status_code=400, 
-                detail="Prompt is required"
-            )
-        
-        # Save to temporary file
-        temp_path = file_handler.save_uploaded_file(content)
-        
-        try:
-            # Process with OCR + AI
-            result = doc_processor.process_pdf_with_prompt(temp_path, prompt)
-            
-            return {
-                "success": True,
-                "confidence_score": result['confidence_score'],
-                "extracted_data": result['extracted_data']
-            }
-            
-        finally:
-            # Always clean up
-            file_handler.cleanup_temp_file(temp_path)
-            
-    except HTTPException:
-        raise
-    except Exception as e:
+@app.post("/extract")
+async def extract_endpoint(
+    file: UploadFile,
+    prompt: str = Form(...),
+    _: None = Depends(verify_api_key)
+):
+    """Extract structured data from PDF using AI."""
+    # Validate file type
+    if not file.filename.endswith('.pdf'):
         raise HTTPException(
-            status_code=500, 
-            detail=f"Processing failed: {str(e)}"
+            status_code=400,
+            detail="Only PDF files are supported"
         )
 
+    # Validate prompt
+    if not prompt or len(prompt.strip()) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Prompt must be at least 10 characters"
+        )
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler for unhandled errors."""
-    return JSONResponse(
-        status_code=500,
-        content={"success": False, "error": "Internal server error"}
-    )
+    # Validate file size
+    if file.size and file.size > Config.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size exceeds maximum limit of {Config.MAX_FILE_SIZE} bytes"
+        )
+
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        # Extract text first
+        text = document_processor.extract_text_from_pdf(temp_file_path)
+
+        # Extract structured data using AI
+        result = document_processor.extract_structured_data(text, prompt)
+
+        # Clean up temporary file
+        os.unlink(temp_file_path)
+
+        return {
+            "success": True,
+            "extracted_data": result["extracted_data"]
+        }
+
+    except Exception as e:
+        logger.error(f"Extraction failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Document processing failed"
+        )
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=config.PORT)
+    uvicorn.run(app, host="0.0.0.0", port=Config.PORT)

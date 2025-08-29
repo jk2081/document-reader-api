@@ -1,164 +1,382 @@
-This project builds an api to process documents using an OCR library and AI. Read PRD.md.
+# Claude Code Instructions
 
-# Development Guidelines
+## Document Reader API
 
-## Philosophy
+### Project Overview
 
-### Core Beliefs
+Build a simple RESTful API for PDF processing with OCR and AI extraction using the document-reader-ocr package.
 
-- **Incremental progress over big bangs** - Small changes that compile and pass tests
-- **Learning from existing code** - Study and plan before implementing
-- **Pragmatic over dogmatic** - Adapt to project reality
-- **Clear intent over clever code** - Be boring and obvious
+### Core Requirements
 
-### Simplicity Means
+- **Framework**: FastAPI
+- **OCR Engine**: document-reader-ocr (from PyPI)
+- **AI Service**: Claude AI (Anthropic)
+- **Authentication**: Bearer token
+- **File Support**: PDF only
+- **Deployment**: Docker
 
-- Single responsibility per function/class
-- Avoid premature abstractions
-- No clever tricks - choose the boring solution
-- If you need to explain it, it's too complex
+### File Structure
 
-## Process
-
-### 1. Planning & Staging
-
-Break complex work into 3-5 stages. Document in `IMPLEMENTATION_PLAN.md`:
-
-```markdown
-## Stage N: [Name]
-
-**Goal**: [Specific deliverable]
-**Success Criteria**: [Testable outcomes]
-**Tests**: [Specific test cases]
-**Status**: [Not Started|In Progress|Complete]
+```
+/app.py                 # Main FastAPI app with endpoints
+/document_processor.py  # OCR + LLM processing logic
+/config.py             # Configuration management
+/requirements.txt      # Python dependencies
+/Dockerfile           # Container configuration
+/README.md            # Setup guide
 ```
 
-- Update status as you progress
-- Remove file when all stages are done
+### Implementation Steps
 
-### 2. Implementation Flow
+#### 1. Create `config.py`
 
-1. **Understand** - Study existing patterns in codebase
-2. **Test** - Write test first (red)
-3. **Implement** - Minimal code to pass (green)
-4. **Refactor** - Clean up with tests passing
-5. **Commit** - With clear message linking to plan
+```python
+import os
+from typing import Optional
 
-### 3. When Stuck (After 3 Attempts)
+class Config:
+    API_KEY: str = os.getenv("API_KEY", "")
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", "52428800"))  # 50MB
+    PORT: int = int(os.getenv("PORT", "8000"))
 
-**CRITICAL**: Maximum 3 attempts per issue, then STOP.
+    @classmethod
+    def validate(cls) -> None:
+        if not cls.API_KEY:
+            raise ValueError("API_KEY environment variable is required")
+        if not cls.ANTHROPIC_API_KEY:
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+```
 
-1. **Document what failed**:
+#### 2. Create `document_processor.py`
 
-   - What you tried
-   - Specific error messages
-   - Why you think it failed
+```python
+import os
+import tempfile
+import logging
+from typing import Dict, Any
+from document_reader import extract_text_from_pdf
+from anthropic import Anthropic
 
-2. **Research alternatives**:
+logger = logging.getLogger(__name__)
 
-   - Find 2-3 similar implementations
-   - Note different approaches used
+class DocumentProcessor:
+    def __init__(self, anthropic_api_key: str):
+        self.anthropic = Anthropic(api_key=anthropic_api_key)
 
-3. **Question fundamentals**:
+    def extract_text_from_pdf(self, file_path: str) -> str:
+        """Extract text from PDF using OCR."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"PDF file not found: {file_path}")
 
-   - Is this the right abstraction level?
-   - Can this be split into smaller problems?
-   - Is there a simpler approach entirely?
+        try:
+            text = extract_text_from_pdf(file_path)
+            logger.info(f"Successfully extracted {len(text)} characters")
+            return text.strip()
+        except Exception as e:
+            logger.error(f"OCR processing failed: {e}")
+            raise RuntimeError(f"OCR processing failed: {str(e)}")
 
-4. **Try different angle**:
-   - Different library/framework feature?
-   - Different architectural pattern?
-   - Remove abstraction instead of adding?
+    def extract_structured_data(self, text: str, prompt: str) -> Dict[str, Any]:
+        """Extract structured data using Claude AI."""
+        try:
+            response = self.anthropic.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=4000,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Extract structured data from this text based on the following prompt:\n\nPrompt: {prompt}\n\nText:\n{text}"
+                    }
+                ]
+            )
 
-## Technical Standards
+            # Parse the response to extract structured data
+            content = response.content[0].text
+            # For simplicity, return as text - can be enhanced with JSON parsing
+            return {"extracted_data": content}
 
-### Architecture Principles
+        except Exception as e:
+            logger.error(f"AI extraction failed: {e}")
+            raise RuntimeError(f"AI extraction failed: {str(e)}")
+```
 
-- **Composition over inheritance** - Use dependency injection
-- **Interfaces over singletons** - Enable testing and flexibility
-- **Explicit over implicit** - Clear data flow and dependencies
-- **Test-driven when possible** - Never disable tests, fix them
+#### 3. Create `app.py`
 
-### Code Quality
+```python
+import os
+import tempfile
+import logging
+from typing import Dict, Any
+from fastapi import FastAPI, HTTPException, UploadFile, Depends, Header
+from fastapi.responses import JSONResponse
+from document_processor import DocumentProcessor
+from config import Config
 
-- **Every commit must**:
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-  - Compile successfully
-  - Pass all existing tests
-  - Include tests for new functionality
-  - Follow project formatting/linting
+# Initialize FastAPI app
+app = FastAPI(title="Document Reader API", version="1.0.0")
 
-- **Before committing**:
-  - Run formatters/linters
-  - Self-review changes
-  - Ensure commit message explains "why"
+# Validate configuration on startup
+Config.validate()
 
-### Error Handling
+# Initialize document processor
+document_processor = DocumentProcessor(Config.ANTHROPIC_API_KEY)
 
-- Fail fast with descriptive messages
-- Include context for debugging
-- Handle errors at appropriate level
-- Never silently swallow exceptions
+def verify_api_key(authorization: str = Header(None)) -> None:
+    """Verify API key from Authorization header."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
 
-## Decision Framework
+    token = authorization.replace("Bearer ", "")
+    if token != Config.API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
-When multiple valid approaches exist, choose based on:
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "document-reader-api"}
 
-1. **Testability** - Can I easily test this?
-2. **Readability** - Will someone understand this in 6 months?
-3. **Consistency** - Does this match project patterns?
-4. **Simplicity** - Is this the simplest solution that works?
-5. **Reversibility** - How hard to change later?
+@app.post("/ocr")
+async def ocr_endpoint(
+    file: UploadFile,
+    _: None = Depends(verify_api_key)
+):
+    """Extract text from PDF using OCR."""
+    # Validate file type
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported"
+        )
 
-## Project Integration
+    # Validate file size
+    if file.size and file.size > Config.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size exceeds maximum limit of {Config.MAX_FILE_SIZE} bytes"
+        )
 
-### Learning the Codebase
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
 
-- Find 3 similar features/components
-- Identify common patterns and conventions
-- Use same libraries/utilities when possible
-- Follow existing test patterns
+        # Extract text
+        text = document_processor.extract_text_from_pdf(temp_file_path)
 
-### Tooling
+        # Clean up temporary file
+        os.unlink(temp_file_path)
 
-- Use project's existing build system
-- Use project's test framework
-- Use project's formatter/linter settings
-- Don't introduce new tools without strong justification
+        return {
+            "success": True,
+            "text": text,
+            "text_length": len(text)
+        }
 
-## Quality Gates
+    except Exception as e:
+        logger.error(f"OCR processing failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Document processing failed"
+        )
 
-### Definition of Done
+@app.post("/extract")
+async def extract_endpoint(
+    file: UploadFile,
+    prompt: str,
+    _: None = Depends(verify_api_key)
+):
+    """Extract structured data from PDF using AI."""
+    # Validate file type
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported"
+        )
 
-- [ ] Tests written and passing
-- [ ] Code follows project conventions
-- [ ] No linter/formatter warnings
-- [ ] Commit messages are clear
-- [ ] Implementation matches plan
-- [ ] No TODOs without issue numbers
+    # Validate prompt
+    if not prompt or len(prompt.strip()) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Prompt must be at least 10 characters"
+        )
 
-### Test Guidelines
+    # Validate file size
+    if file.size and file.size > Config.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size exceeds maximum limit of {Config.MAX_FILE_SIZE} bytes"
+        )
 
-- Test behavior, not implementation
-- One assertion per test when possible
-- Clear test names describing scenario
-- Use existing test utilities/helpers
-- Tests should be deterministic
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
 
-## Important Reminders
+        # Extract text first
+        text = document_processor.extract_text_from_pdf(temp_file_path)
 
-**NEVER**:
+        # Extract structured data using AI
+        result = document_processor.extract_structured_data(text, prompt)
 
-- Use `--no-verify` to bypass commit hooks
-- Disable tests instead of fixing them
-- Commit code that doesn't compile
-- Make assumptions - verify with existing code
+        # Clean up temporary file
+        os.unlink(temp_file_path)
 
-**ALWAYS**:
+        return {
+            "success": True,
+            "extracted_data": result["extracted_data"]
+        }
 
-- Commit working code incrementally
-- Update plan documentation as you go
-- Learn from existing implementations
-- Stop after 3 failed attempts and reassess
+    except Exception as e:
+        logger.error(f"Extraction failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Document processing failed"
+        )
 
-For Python specific code standards read CODE_STANDARDS.md
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=Config.PORT)
+```
+
+#### 4. Create `requirements.txt`
+
+```txt
+# Core API framework
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+
+# Document processing
+git+https://github.com/jk2081/document-reader-ocr.git
+
+# AI service
+anthropic==0.64.0
+```
+
+#### 5. Create `Dockerfile`
+
+```dockerfile
+FROM python:3.11
+
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+#### 6. Create `README.md`
+
+````markdown
+# Document Reader API
+
+A simple RESTful API for PDF processing with OCR and AI extraction.
+
+## Features
+
+- Extract text from PDFs using OCR
+- Extract structured data using Claude AI
+- Simple authentication with API key
+- Docker deployment ready
+
+## Setup
+
+### Environment Variables
+
+```bash
+export API_KEY=your-secret-key
+export ANTHROPIC_API_KEY=your-claude-key
+export MAX_FILE_SIZE=52428800  # 50MB (optional)
+export PORT=8000  # optional
+```
+````
+
+### Docker Deployment
+
+```bash
+# Build image
+docker build -t document-reader-api .
+
+# Run container
+docker run -d \
+  -p 8000:8000 \
+  -e API_KEY=your-secret-key \
+  -e ANTHROPIC_API_KEY=your-claude-key \
+  --name doc-reader \
+  document-reader-api
+```
+
+## API Endpoints
+
+### POST /ocr
+
+Extract text from PDF.
+
+```bash
+curl -X POST "http://localhost:8000/ocr" \
+  -H "Authorization: Bearer your-api-key" \
+  -F "file=@document.pdf"
+```
+
+### POST /extract
+
+Extract structured data from PDF using AI.
+
+```bash
+curl -X POST "http://localhost:8000/extract" \
+  -H "Authorization: Bearer your-api-key" \
+  -F "file=@document.pdf" \
+  -F "prompt=Extract policy number, dates, and premium amount"
+```
+
+### GET /health
+
+Health check endpoint.
+
+```bash
+curl "http://localhost:8000/health"
+```
+
+```
+
+### Key Implementation Notes
+
+1. **Simple Authentication**: Bearer token validation
+2. **File Validation**: PDF files only, size limits enforced
+3. **Error Handling**: Clear, actionable error messages
+4. **Temporary Files**: Secure handling with automatic cleanup
+5. **Logging**: Structured logging for debugging
+6. **Type Hints**: Full type annotations for reliability
+7. **Configuration**: Environment-based configuration
+8. **Docker Ready**: Simple containerization
+
+### Testing the API
+
+1. **Health Check**: `GET /health` (no auth required)
+2. **OCR Test**: Upload a PDF to `/ocr` with valid API key
+3. **Extraction Test**: Upload a PDF with prompt to `/extract`
+
+### Common Issues
+
+1. **Missing API Keys**: Ensure both `API_KEY` and `ANTHROPIC_API_KEY` are set
+2. **File Size**: Check `MAX_FILE_SIZE` environment variable
+3. **File Type**: Only PDF files are supported
+4. **Network**: Ensure internet access for Anthropic API calls
+
+This implementation follows the simplified PRD requirements and produces clean, maintainable code that "just works."
+```

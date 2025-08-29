@@ -1,114 +1,171 @@
 # Document Reader API
 
-Simple REST API for PDF OCR and data extraction using EasyOCR and Claude AI.
-
-## Features
-
-- **OCR Processing**: Extract text from PDFs with confidence scoring
-- **AI Extraction**: Extract structured data using custom prompts
-- **Admin Interface**: Simple web UI for configuration and API key management
-- **Docker Ready**: Easy deployment with Docker
+A simple RESTful API for PDF processing with OCR and AI extraction using document-reader-ocr and Claude AI.
 
 ## Quick Start
 
-### 1. Environment Setup
+### Prerequisites
+- Python 3.11+
+- Anthropic API key ([Get one here](https://console.anthropic.com/))
 
-Copy the environment template:
+### Setup
 ```bash
-cp .env.example .env
-```
+# 1. Clone and enter directory
+git clone <your-repo-url>
+cd document-reader-api
 
-Edit `.env` with your configuration:
-```bash
-API_KEY=your-secret-api-key-here
-ADMIN_PASSWORD=admin123
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-```
+# 2. Set environment variables
+export API_KEY="your-secret-api-key"
+export ANTHROPIC_API_KEY="sk-ant-api03-your-anthropic-key"
 
-### 2. Install Dependencies
-
-```bash
+# 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. Run the server
+python -m uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-### 3. Run the Application
-
+### Test It Works
 ```bash
-python app.py
+curl http://localhost:8000/health
+# Should return: {"status":"healthy","service":"document-reader-api"}
 ```
 
-The API will be available at `http://localhost:8000`
-
-### 4. Admin Interface
-
-Access the admin interface at `http://localhost:8000/admin`
-- Login with the password from `ADMIN_PASSWORD`
-- Manage API keys and configuration
-
-## API Endpoints
-
-### Health Check
-```bash
-GET /health
-```
-
-### Extract Text (OCR Only)
-```bash
-curl -X POST "http://localhost:8000/ocr" \
-  -H "Authorization: Bearer your-api-key" \
-  -F "file=@document.pdf"
-```
-
-### Extract Structured Data (OCR + AI)
-```bash
-curl -X POST "http://localhost:8000/extract" \
-  -H "Authorization: Bearer your-api-key" \
-  -F "file=@document.pdf" \
-  -F "prompt=Extract policy number, dates, and premium amount"
-```
-
-## Docker Deployment
-
-### Build and Run
-```bash
-# Build image
-docker build -t document-reader-api .
-
-# Run container
-docker run -d \
-  -p 8000:8000 \
-  -e API_KEY=your-secret-key \
-  -e ADMIN_PASSWORD=admin123 \
-  -e ANTHROPIC_API_KEY=your-claude-key \
-  --name doc-reader \
-  document-reader-api
-```
+## API Usage
 
 ### Health Check
 ```bash
 curl http://localhost:8000/health
 ```
 
+### Extract Text from PDF
+```bash
+curl -X POST "http://localhost:8000/ocr" \
+  -H "Authorization: Bearer your-api-key" \
+  -F "file=@document.pdf"
+
+# Returns: {"success": true, "text": "extracted text...", "text_length": 1234}
+```
+
+### Extract Structured Data with AI
+```bash
+curl -X POST "http://localhost:8000/extract" \
+  -H "Authorization: Bearer your-api-key" \
+  -F "file=@document.pdf" \
+  -F "prompt=Extract names, dates, and amounts from this document"
+
+# Returns: {"success": true, "extracted_data": "Name: John Doe\nDate: 2024-01-15..."}
+```
+
+### Interactive API Documentation
+Visit `http://localhost:8000/docs` for interactive API documentation.
+
+## Local Development
+
+### Environment Setup
+Copy `.env.example` to `.env` and fill in your values:
+```bash
+API_KEY=your-secret-api-key-here
+ANTHROPIC_API_KEY=sk-ant-api03-your-anthropic-key-here
+MAX_FILE_SIZE=52428800  # 50MB (optional)
+PORT=8000               # optional
+```
+
+### Testing
+```bash
+# Test health endpoint
+curl http://localhost:8000/health
+
+# Test with a sample PDF
+curl -X POST "http://localhost:8000/ocr" \
+  -H "Authorization: Bearer your-api-key" \
+  -F "file=@sample.pdf"
+```
+
+## Deployment
+
+### Docker (Recommended)
+```bash
+# Build and run
+docker build -t document-reader-api .
+docker run -d -p 8000:8000 \
+  -e API_KEY="your-api-key" \
+  -e ANTHROPIC_API_KEY="your-anthropic-key" \
+  --name doc-reader document-reader-api
+
+# Test deployment
+curl http://localhost:8000/health
+```
+
+### RunPod
+1. Create new pod with Docker template
+2. Upload your code or `git clone`
+3. Set environment variables in RunPod dashboard
+4. Run:
+```bash
+docker build -t document-reader-api . && docker run -d -p 8000:8000 \
+  -e API_KEY="$API_KEY" -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  --name doc-reader document-reader-api
+```
+
+### DigitalOcean
+1. Create Ubuntu droplet with Docker
+2. SSH in and clone your repo
+3. Set environment variables and run:
+```bash
+export API_KEY="your-api-key" && export ANTHROPIC_API_KEY="your-anthropic-key"
+docker build -t document-reader-api . && docker run -d -p 8000:8000 \
+  -e API_KEY="$API_KEY" -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  --name doc-reader document-reader-api
+```
+
+### AWS EC2
+1. Launch Ubuntu instance with Docker
+2. Open port 8000 in security groups
+3. SSH in and deploy same as DigitalOcean above
+
+## Troubleshooting
+
+### API Not Starting
+```bash
+# Check if container is running
+docker ps
+
+# Check logs for errors
+docker logs doc-reader
+
+# Check if port is in use
+netstat -tlnp | grep 8000
+```
+
+### Authentication Errors
+- Verify `API_KEY` environment variable is set
+- Check that Bearer token in request matches your API key
+- Make sure Anthropic API key is valid
+
+### File Upload Issues
+- Only PDF files are supported
+- Check file size (default limit: 50MB)
+- Verify file isn't corrupted: `file document.pdf`
+
+### OCR Processing Errors
+- Check container has sufficient memory (2GB+ recommended)
+- View detailed logs: `docker logs doc-reader | grep -i error`
+
 ## Configuration
 
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `API_KEY` | Client authentication token | Required |
-| `ADMIN_PASSWORD` | Admin UI password | Required |
-| `ANTHROPIC_API_KEY` | Claude API key | Required |
-| `MAX_FILE_SIZE` | File size limit in bytes | 52428800 (50MB) |
-| `PORT` | Server port | 8000 |
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `API_KEY` | Authentication token for API access | - | Yes |
+| `ANTHROPIC_API_KEY` | Claude AI API key | - | Yes |
+| `MAX_FILE_SIZE` | Max file size in bytes | 52428800 (50MB) | No |
+| `PORT` | Server port | 8000 | No |
 
-## File Support
+## File Limits
+- **Format**: PDF only
+- **Size**: 50MB max (configurable)
+- **Processing**: ~30-60 seconds per document
 
-- **Supported formats**: PDF only
-- **Max file size**: 50MB (configurable)
-- **Processing timeout**: 90 seconds
+---
 
-## Dependencies
-
-- FastAPI for REST API
-- Document Reader package (local wheel)
-- EasyOCR for text extraction
-- Claude AI for data extraction
-- Jinja2 for admin templates
+**Need help?** Check the interactive docs at `/docs` or view logs with `docker logs doc-reader`
