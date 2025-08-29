@@ -35,7 +35,7 @@ import os
 from typing import Optional
 
 class Config:
-    API_KEY: str = os.getenv("API_KEY", "")
+    API_KEY: str = os.getenv("BTW_DOC_READER_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", "52428800"))  # 50MB
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -43,7 +43,7 @@ class Config:
     @classmethod
     def validate(cls) -> None:
         if not cls.API_KEY:
-            raise ValueError("API_KEY environment variable is required")
+            raise ValueError("BTW_DOC_READER_API_KEY environment variable is required")
         if not cls.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 ```
@@ -299,7 +299,7 @@ A simple RESTful API for PDF processing with OCR and AI extraction.
 ### Environment Variables
 
 ```bash
-export API_KEY=your-secret-key
+export BTW_DOC_READER_API_KEY=your-secret-key
 export ANTHROPIC_API_KEY=your-claude-key
 export MAX_FILE_SIZE=52428800  # 50MB (optional)
 export PORT=8000  # optional
@@ -315,7 +315,7 @@ docker build -t document-reader-api .
 # Run container
 docker run -d \
   -p 8000:8000 \
-  -e API_KEY=your-secret-key \
+  -e BTW_DOC_READER_API_KEY=your-secret-key \
   -e ANTHROPIC_API_KEY=your-claude-key \
   --name doc-reader \
   document-reader-api
@@ -373,7 +373,7 @@ curl "http://localhost:8000/health"
 
 ### Common Issues
 
-1. **Missing API Keys**: Ensure both `API_KEY` and `ANTHROPIC_API_KEY` are set
+1. **Missing API Keys**: Ensure both `BTW_DOC_READER_API_KEY` and `ANTHROPIC_API_KEY` are set
 2. **File Size**: Check `MAX_FILE_SIZE` environment variable
 3. **File Type**: Only PDF files are supported
 4. **Network**: Ensure internet access for Anthropic API calls

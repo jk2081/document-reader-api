@@ -57,7 +57,7 @@ Designed for easy Docker deployment with minimal configuration.
 
 **Environment Variables:**
 
-- `API_KEY` - Client authentication token
+- `BTW_DOC_READER_API_KEY` - Client authentication token
 - `ANTHROPIC_API_KEY` - Claude API key
 - `MAX_FILE_SIZE` - File size limit (default: 50MB)
 - `PORT` - Server port (default: 8000)
@@ -261,21 +261,21 @@ def process_pdf(file_path):
 ```python
 # ✅ Good: Simple, clear configuration
 class Config:
-    API_KEY: str = os.getenv("API_KEY", "")
+    API_KEY: str = os.getenv("BTW_DOC_READER_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", "52428800"))  # 50MB
 
     @classmethod
     def validate(cls) -> None:
         if not cls.API_KEY:
-            raise ValueError("API_KEY environment variable is required")
+            raise ValueError("BTW_DOC_READER_API_KEY environment variable is required")
         if not cls.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
 # ❌ Bad: Complex configuration with defaults everywhere
 class Config:
     def __init__(self):
-        self.api_key = os.getenv("API_KEY", "default_key")
+        self.api_key = os.getenv("BTW_DOC_READER_API_KEY", "default_key")
         self.anthropic_key = os.getenv("ANTHROPIC_API_KEY", "default_key")
         # ... many more with unclear defaults
 ```
@@ -572,7 +572,7 @@ docker build -t document-reader-api .
 # Run container
 docker run -d \
   -p 8000:8000 \
-  -e API_KEY=your-secret-key \
+  -e BTW_DOC_READER_API_KEY=your-secret-key \
   -e ANTHROPIC_API_KEY=your-claude-key \
   --name doc-reader \
   document-reader-api
@@ -582,7 +582,7 @@ docker run -d \
 
 ```bash
 # Set environment variables directly
-export API_KEY=your-secret-key
+export BTW_DOC_READER_API_KEY=your-secret-key
 export ANTHROPIC_API_KEY=your-claude-key
 ```
 
