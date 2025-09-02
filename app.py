@@ -76,11 +76,27 @@ async def ocr_endpoint(
             "text_length": len(text)
         }
 
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file could not be processed"
+        )
     except Exception as e:
+        error_message = str(e)
         logger.error(f"OCR processing failed: {e}")
+        
+        # Provide more specific error messages
+        if "document-reader" in error_message.lower():
+            detail = "OCR processing failed. The PDF may be corrupted or unsupported."
+        elif "memory" in error_message.lower() or "resource" in error_message.lower():
+            detail = "Insufficient resources to process document. Try a smaller file."
+        else:
+            detail = f"OCR processing failed: {error_message}"
+            
         raise HTTPException(
             status_code=500,
-            detail="Document processing failed"
+            detail=detail
         )
 
 
@@ -133,11 +149,35 @@ async def extract_endpoint(
             "extracted_data": result["extracted_data"]
         }
 
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file could not be processed"
+        )
     except Exception as e:
+        error_message = str(e)
         logger.error(f"Extraction failed: {e}")
+        
+        # Provide more specific error messages based on error type
+        if "404" in error_message and "model" in error_message.lower():
+            detail = "AI model not available. Please contact support."
+        elif "401" in error_message or "authentication" in error_message.lower():
+            detail = "AI service authentication failed. Check API configuration."
+        elif "400" in error_message or "invalid" in error_message.lower():
+            detail = "Invalid request to AI service. Check your prompt and try again."
+        elif "timeout" in error_message.lower():
+            detail = "AI processing timed out. Try with a shorter document or simpler prompt."
+        elif "document-reader" in error_message.lower():
+            detail = "OCR processing failed. The PDF may be corrupted or unsupported."
+        elif "memory" in error_message.lower() or "resource" in error_message.lower():
+            detail = "Insufficient resources. Try a smaller file or simpler prompt."
+        else:
+            detail = f"Processing failed: {error_message}"
+            
         raise HTTPException(
             status_code=500,
-            detail="Document processing failed"
+            detail=detail
         )
 
 
