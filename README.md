@@ -108,17 +108,33 @@ docker run -d -p 8000:8000 \
 curl http://localhost:8000/health
 ```
 
-### RunPod
+### RunPod (Dedicated Pod)
 
-1. Create new pod with Docker template
-2. Upload your code or `git clone`
-3. Set environment variables in RunPod dashboard
-4. Run:
+**One-command setup:**
 
 ```bash
-docker build -t document-reader-api . && docker run -d -p 8000:8000 \
-  -e BTW_DOC_READER_API_KEY="$BTW_DOC_READER_API_KEY" -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-  --name doc-reader document-reader-api
+# Clone repo and run setup script
+git clone https://github.com/jk2081/document-reader-api.git
+cd document-reader-api
+./setup.sh
+```
+
+The setup script will:
+- Install all system dependencies 
+- Install Python requirements
+- Set up environment variables (prompts for API keys)
+- Start the server automatically
+- Run health checks and display access URLs
+
+**Manual setup (if preferred):**
+```bash
+git clone https://github.com/jk2081/document-reader-api.git
+cd document-reader-api
+apt update && apt install -y python3 python3-pip
+pip3 install -r requirements.txt
+export BTW_DOC_READER_API_KEY="your-api-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+python3 -m uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
 ### DigitalOcean
