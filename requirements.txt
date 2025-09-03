@@ -8,3 +8,7 @@ git+https://github.com/jk2081/document-reader-ocr.git
 
 # AI service
 anthropic==0.64.0
+
+# Additional dependencies for better Docker compatibility
+opencv-python-headless==4.8.1.78
+Pillow==10.0.1
