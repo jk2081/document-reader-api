@@ -100,6 +100,68 @@ async def ocr_endpoint(
         )
 
 
+@app.post("/ocr-detailed")
+async def ocr_detailed_endpoint(
+    file: UploadFile,
+    _: None = Depends(verify_api_key)
+):
+    """Extract text from PDF with bounding boxes and layout information."""
+    # Validate file type
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported"
+        )
+
+    # Validate file size
+    if file.size and file.size > Config.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size exceeds maximum limit of {Config.MAX_FILE_SIZE} bytes"
+        )
+
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        # Extract text with layout information
+        result = document_processor.extract_text_with_layout(temp_file_path)
+
+        # Clean up temporary file
+        os.unlink(temp_file_path)
+
+        return {
+            "success": True,
+            **result
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file could not be processed"
+        )
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"OCR processing failed: {e}")
+        
+        # Provide more specific error messages
+        if "document-reader" in error_message.lower():
+            detail = "OCR processing failed. The PDF may be corrupted or unsupported."
+        elif "memory" in error_message.lower() or "resource" in error_message.lower():
+            detail = "Insufficient resources to process document. Try a smaller file."
+        else:
+            detail = f"OCR processing failed: {error_message}"
+            
+        raise HTTPException(
+            status_code=500,
+            detail=detail
+        )
+
+
 @app.post("/extract")
 async def extract_endpoint(
     file: UploadFile,

@@ -52,6 +52,23 @@ curl -X POST "http://localhost:8000/ocr" \
 # Returns: {"success": true, "text": "extracted text...", "text_length": 1234}
 ```
 
+### Extract Text with Bounding Boxes and Layout
+
+```bash
+curl -X POST "http://localhost:8000/ocr-detailed" \
+  -H "Authorization: Bearer your-api-key" \
+  -F "file=@document.pdf"
+
+# Returns: {
+#   "success": true,
+#   "text": "extracted text...",
+#   "text_length": 1234,
+#   "bounding_boxes": [{"x": 100, "y": 200, "width": 300, "height": 50}],
+#   "confidence_scores": [0.95, 0.87, 0.92],
+#   "layout_info": {"page_width": 612, "page_height": 792}
+# }
+```
+
 ### Extract Structured Data with AI
 
 ```bash
@@ -120,13 +137,15 @@ cd document-reader-api
 ```
 
 The setup script will:
-- Install all system dependencies 
+
+- Install all system dependencies
 - Install Python requirements
 - Set up environment variables (prompts for API keys)
 - Start the server automatically
 - Run health checks and display access URLs
 
 **Manual setup (if preferred):**
+
 ```bash
 git clone https://github.com/jk2081/document-reader-api.git
 cd document-reader-api
